@@ -5,6 +5,8 @@ import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { PlusCircle, FileText, Clock, TrendingUp } from "lucide-react";
 import Link from "next/link";
+import { useAuth } from "@/lib/auth-context";
+import { supabase } from "@/lib/supabase";
 
 interface Interview {
   id: string;
@@ -16,18 +18,37 @@ interface Interview {
 }
 
 export default function InterviewsPage() {
+  const { user } = useAuth();
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetchInterviews();
-  }, []);
+    if (user) {
+      fetchInterviews();
+    }
+  }, [user]);
 
   const fetchInterviews = async () => {
+    if (!user || !supabase) {
+      setLoading(false);
+      return;
+    }
+
     try {
-      // Try API call first for real data
-      const response = await fetch("/api/interviews");
+      // Get the current session token
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.access_token) {
+        throw new Error("No valid session");
+      }
+
+      // Call API with authorization header
+      const response = await fetch("/api/interviews", {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      });
       
       if (response.ok) {
         const data = await response.json();
@@ -38,7 +59,7 @@ export default function InterviewsPage() {
       }
       
       // If API fails, throw error to fall back to mock data
-      throw new Error("API not available");
+      throw new Error(`API error: ${response.status}`);
       
     } catch (error) {
       console.warn("⚠️ API not available, using mock data:", error);

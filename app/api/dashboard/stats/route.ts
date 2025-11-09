@@ -3,13 +3,6 @@ import { supabase } from "@/lib/supabase";
 
 export async function GET(request: NextRequest) {
   try {
-    // Get user ID from headers (in real app, this would come from auth)
-    // For now, try to get from query params or use demo
-    const userId = request.nextUrl.searchParams.get("userId") || 
-                   request.headers.get("x-user-id") || 
-                   "demo-user-id";
-
-    console.log("📊 Dashboard API called - User ID:", userId);
     console.log("🔌 Supabase client status:", supabase ? "Connected" : "Not configured");
 
     // If Supabase is not configured, return mock data
@@ -42,9 +35,33 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         stats: mockStats,
         recentInterviews: mockInterviews,
-        debug: { supabaseConfigured: false, userId },
+        debug: { supabaseConfigured: false },
       });
     }
+
+    // Get user ID from authorization header
+    const authHeader = request.headers.get("authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return NextResponse.json({ 
+        error: "No authorization token provided",
+        message: "Please log in to access your dashboard"
+      }, { status: 401 });
+    }
+
+    const token = authHeader.substring(7);
+
+    // Get authenticated user
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    
+    if (authError || !user) {
+      return NextResponse.json({ 
+        error: "Invalid or expired token",
+        message: "Please log in again"
+      }, { status: 401 });
+    }
+
+    const userId = user.id;
+    console.log("📊 Dashboard API called - User ID:", userId);
 
     // Fetch user's interview statistics
     console.log("🔍 Querying interviews for user:", userId);
@@ -70,11 +87,18 @@ export async function GET(request: NextRequest) {
 
     console.log("✅ Found interviews:", interviews?.length || 0);
 
+    // Define interview type for better type safety
+    interface Interview {
+      status: string;
+      overall_score: number | null;
+      created_at: string;
+    }
+
     // Calculate statistics
-    const completedInterviews = interviews?.filter(i => i.status === "completed") || [];
+    const completedInterviews = (interviews as Interview[])?.filter((i: Interview) => i.status === "completed") || [];
     const totalInterviews = interviews?.length || 0;
     const averageScore = completedInterviews.length > 0 
-      ? Math.round(completedInterviews.reduce((sum, i) => sum + (i.overall_score || 0), 0) / completedInterviews.length)
+      ? Math.round(completedInterviews.reduce((sum: number, i: Interview) => sum + (i.overall_score || 0), 0) / completedInterviews.length)
       : 0;
 
     // Calculate improvement rate (compare last month to previous month)
@@ -82,18 +106,18 @@ export async function GET(request: NextRequest) {
     const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const twoMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, 1);
     
-    const lastMonthInterviews = completedInterviews.filter(i => 
+    const lastMonthInterviews = completedInterviews.filter((i: Interview) => 
       new Date(i.created_at) >= lastMonth && new Date(i.created_at) < now
     );
-    const previousMonthInterviews = completedInterviews.filter(i => 
+    const previousMonthInterviews = completedInterviews.filter((i: Interview) => 
       new Date(i.created_at) >= twoMonthsAgo && new Date(i.created_at) < lastMonth
     );
 
     const lastMonthAvg = lastMonthInterviews.length > 0 
-      ? lastMonthInterviews.reduce((sum, i) => sum + (i.overall_score || 0), 0) / lastMonthInterviews.length
+      ? lastMonthInterviews.reduce((sum: number, i: Interview) => sum + (i.overall_score || 0), 0) / lastMonthInterviews.length
       : 0;
     const previousMonthAvg = previousMonthInterviews.length > 0 
-      ? previousMonthInterviews.reduce((sum, i) => sum + (i.overall_score || 0), 0) / previousMonthInterviews.length
+      ? previousMonthInterviews.reduce((sum: number, i: Interview) => sum + (i.overall_score || 0), 0) / previousMonthInterviews.length
       : 0;
 
     const improvementRate = previousMonthAvg > 0 

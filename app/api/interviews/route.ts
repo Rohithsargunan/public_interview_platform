@@ -3,12 +3,6 @@ import { supabase } from "@/lib/supabase";
 
 export async function GET(request: NextRequest) {
   try {
-    // Get user ID from headers (in real app, this would come from auth)
-    const userId = request.nextUrl.searchParams.get("userId") || 
-                   request.headers.get("x-user-id") || 
-                   "demo-user-id";
-
-    console.log("📋 Interviews API called - User ID:", userId);
     console.log("🔌 Supabase client status:", supabase ? "Connected" : "Not configured");
 
     // If Supabase is not configured, return mock data
@@ -43,6 +37,30 @@ export async function GET(request: NextRequest) {
 
       return NextResponse.json({ interviews: mockInterviews });
     }
+
+    // Get user ID from authorization header
+    const authHeader = request.headers.get("authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return NextResponse.json({ 
+        error: "No authorization token provided",
+        message: "Please log in to access your interviews"
+      }, { status: 401 });
+    }
+
+    const token = authHeader.substring(7);
+
+    // Get authenticated user
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    
+    if (authError || !user) {
+      return NextResponse.json({ 
+        error: "Invalid or expired token",
+        message: "Please log in again"
+      }, { status: 401 });
+    }
+
+    const userId = user.id;
+    console.log("📋 Interviews API called - User ID:", userId);
 
     // Fetch user's interviews
     console.log("🔍 Querying interviews for user:", userId);
@@ -83,14 +101,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { jobRole, experienceLevel, jobDescription, resumeUrl } = body;
     
-    // Get user ID from headers (in real app, this would come from auth)
-    const userId = request.headers.get("x-user-id") || "demo-user-id";
-
     // If Supabase is not configured, return mock response
     if (!supabase) {
       const mockInterview = {
         id: "mock-" + Date.now(),
-        user_id: userId,
+        user_id: "demo-user-id",
         job_role: jobRole,
         experience_level: experienceLevel,
         job_description: jobDescription,
@@ -101,6 +116,29 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({ interview: mockInterview });
     }
+
+    // Get user ID from authorization header
+    const authHeader = request.headers.get("authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return NextResponse.json({ 
+        error: "No authorization token provided",
+        message: "Please log in to create an interview"
+      }, { status: 401 });
+    }
+
+    const token = authHeader.substring(7);
+
+    // Get authenticated user
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    
+    if (authError || !user) {
+      return NextResponse.json({ 
+        error: "Invalid or expired token",
+        message: "Please log in again"
+      }, { status: 401 });
+    }
+
+    const userId = user.id;
 
     // Create new interview
     const { data: interview, error } = await supabase

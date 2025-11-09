@@ -1,10 +1,122 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { User, Bell, CreditCard, Shield } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
+import { supabase } from "@/lib/supabase";
+
+interface UserProfile {
+  full_name: string;
+  email: string;
+  phone?: string;
+  subscription_tier: string;
+}
 
 export default function SettingsPage() {
+  const { user, signOut } = useAuth();
+  const [profile, setProfile] = useState<UserProfile>({
+    full_name: "",
+    email: "",
+    phone: "",
+    subscription_tier: "free"
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      loadUserProfile();
+    }
+  }, [user]);
+
+  const loadUserProfile = async () => {
+    if (!user || !supabase) {
+      // Use user data from auth context as fallback
+      setProfile({
+        full_name: user?.user_metadata?.full_name || "",
+        email: user?.email || "",
+        phone: "",
+        subscription_tier: "free"
+      });
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const { data: userProfile, error } = await supabase
+        .from('users')
+        .select('full_name, email, phone, subscription_tier')
+        .eq('id', user.id)
+        .single();
+
+      if (error) {
+        console.error("Error loading profile:", error);
+        // Fallback to auth data
+        setProfile({
+          full_name: user?.user_metadata?.full_name || "",
+          email: user?.email || "",
+          phone: "",
+          subscription_tier: "free"
+        });
+      } else {
+        setProfile(userProfile);
+      }
+    } catch (error) {
+      console.error("Profile load error:", error);
+      // Fallback to auth data
+      setProfile({
+        full_name: user?.user_metadata?.full_name || "",
+        email: user?.email || "",
+        phone: "",
+        subscription_tier: "free"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    if (!user || !supabase) return;
+
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from('users')
+        .upsert({
+          id: user.id,
+          full_name: profile.full_name,
+          email: profile.email,
+          phone: profile.phone
+        });
+
+      if (error) throw error;
+      
+      alert("Profile updated successfully!");
+    } catch (error) {
+      console.error("Save error:", error);
+      alert("Failed to save profile. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await signOut();
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading settings...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="mb-8">
@@ -25,7 +137,8 @@ export default function SettingsPage() {
               </label>
               <input
                 type="text"
-                defaultValue="John Doe"
+                value={profile.full_name}
+                onChange={(e) => setProfile({ ...profile, full_name: e.target.value })}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent"
               />
             </div>
@@ -35,11 +148,38 @@ export default function SettingsPage() {
               </label>
               <input
                 type="email"
-                defaultValue="john.doe@example.com"
+                value={profile.email}
+                onChange={(e) => setProfile({ ...profile, email: e.target.value })}
+                disabled
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent bg-gray-50"
+              />
+              <p className="text-sm text-gray-500">Email cannot be changed</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Phone (Optional)
+              </label>
+              <input
+                type="tel"
+                value={profile.phone || ""}
+                onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent"
               />
             </div>
-            <Button>Save Changes</Button>
+            <div className="flex justify-between">
+              <Button 
+                onClick={handleSaveProfile}
+                disabled={saving}
+              >
+                {saving ? "Saving..." : "Save Changes"}
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={handleLogout}
+              >
+                Sign Out
+              </Button>
+            </div>
           </CardContent>
         </Card>
 

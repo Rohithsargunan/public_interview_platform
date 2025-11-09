@@ -1,35 +1,139 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { TrendingUp, Target, Award, Calendar } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
+import { supabase } from "@/lib/supabase";
+
+interface ProgressData {
+  overallScore: number;
+  interviewsCompleted: number;
+  averageScore: number;
+  improvementRate: number;
+  skillsMastered: number;
+}
 
 export default function ProgressPage() {
-  const progressData = {
-    overallScore: 78,
-    interviewsCompleted: 12,
-    averageScore: 76,
-    improvementRate: 15,
-    skillsMastered: 5,
+  const { user } = useAuth();
+  const [progressData, setProgressData] = useState<ProgressData>({
+    overallScore: 0,
+    interviewsCompleted: 0,
+    averageScore: 0,
+    improvementRate: 0,
+    skillsMastered: 0,
+  });
+  const [categoryProgress, setCategoryProgress] = useState([
+    { name: "Communication", score: 0, target: 90 },
+    { name: "Content Quality", score: 0, target: 85 },
+    { name: "Behavioral", score: 0, target: 85 },
+    { name: "Non-Verbal", score: 0, target: 80 },
+  ]);
+  const [recentImprovements, setRecentImprovements] = useState([
+    { skill: "Communication", improvement: "+0%", trend: "up" },
+    { skill: "Content Quality", improvement: "+0%", trend: "up" },
+    { skill: "Behavioral", improvement: "+0%", trend: "up" },
+  ]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (user) {
+      fetchProgressData();
+    }
+  }, [user]);
+
+  const fetchProgressData = async () => {
+    if (!user || !supabase) {
+      // Fallback to demo data if not authenticated
+      setProgressData({
+        overallScore: 78,
+        interviewsCompleted: 12,
+        averageScore: 76,
+        improvementRate: 15,
+        skillsMastered: 5,
+      });
+      setLoading(false);
+      return;
+    }
+
+    try {
+      // Get the current session token
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.access_token) {
+        throw new Error("No valid session");
+      }
+
+      // Call progress API with authorization header
+      const response = await fetch("/api/progress", {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log("✅ Using real progress data from database:", data);
+        setProgressData(data.progressData);
+        setCategoryProgress(data.categoryProgress || categoryProgress);
+        setRecentImprovements(data.recentImprovements || recentImprovements);
+        setError(""); 
+      } else {
+        throw new Error(`API error: ${response.status}`);
+      }
+      
+    } catch (error: any) {
+      console.warn("⚠️ API not available, using demo data:", error);
+      setError("Database not connected - showing sample data");
+      
+      // Fallback to demo data
+      setProgressData({
+        overallScore: 78,
+        interviewsCompleted: 12,
+        averageScore: 76,
+        improvementRate: 15,
+        skillsMastered: 5,
+      });
+      setCategoryProgress([
+        { name: "Communication", score: 82, target: 90 },
+        { name: "Content Quality", score: 79, target: 85 },
+        { name: "Behavioral", score: 75, target: 85 },
+        { name: "Non-Verbal", score: 74, target: 80 },
+      ]);
+      setRecentImprovements([
+        { skill: "Communication", improvement: "+8%", trend: "up" },
+        { skill: "Technical Depth", improvement: "+12%", trend: "up" },
+        { skill: "Confidence", improvement: "+6%", trend: "up" },
+      ]);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const categoryProgress = [
-    { name: "Communication", score: 82, target: 90 },
-    { name: "Content Quality", score: 79, target: 85 },
-    { name: "Behavioral", score: 75, target: 85 },
-    { name: "Non-Verbal", score: 74, target: 80 },
-  ];
-
-  const recentImprovements = [
-    { skill: "Communication", improvement: "+8%", trend: "up" },
-    { skill: "Technical Depth", improvement: "+12%", trend: "up" },
-    { skill: "Confidence", improvement: "+6%", trend: "up" },
-  ];
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading progress data...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Progress Tracking</h1>
         <p className="text-gray-600 mt-2">Monitor your interview improvement journey</p>
+        {error && (
+          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+            <p className="text-sm text-blue-800">
+              <strong>Data Status:</strong> {error}
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">

@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { FileText, TrendingUp, Award, Target } from "lucide-react";
 import Link from "next/link";
+import { useAuth } from "@/lib/auth-context";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
 interface Interview {
   id: string;
@@ -21,6 +24,8 @@ interface Stats {
 }
 
 export default function DashboardPage() {
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [stats, setStats] = useState<Stats>({
     interviewsCompleted: 0,
@@ -31,14 +36,37 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  // Redirect to login if not authenticated
   useEffect(() => {
-    fetchDashboardData();
-  }, []);
+    if (!authLoading && !user) {
+      router.push('/auth/login');
+      return;
+    }
+    if (user) {
+      fetchDashboardData();
+    }
+  }, [user, authLoading, router]);
 
   const fetchDashboardData = async () => {
+    if (!user || !supabase) {
+      setLoading(false);
+      return;
+    }
+
     try {
-      // Try API call first for real data
-      const response = await fetch("/api/dashboard/stats");
+      // Get the current session token
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.access_token) {
+        throw new Error("No valid session");
+      }
+
+      // Call API with authorization header
+      const response = await fetch("/api/dashboard/stats", {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      });
       
       if (response.ok) {
         const data = await response.json();
@@ -50,7 +78,7 @@ export default function DashboardPage() {
       }
       
       // If API fails, throw error to fall back to mock data
-      throw new Error("API not available");
+      throw new Error(`API error: ${response.status}`);
       
     } catch (error) {
       console.warn("⚠️ API not available, using mock data:", error);
@@ -95,12 +123,24 @@ export default function DashboardPage() {
     }
   };
 
-  if (loading) {
+  // Show loading while checking authentication
+  if (authLoading || loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Redirect handled in useEffect, but show loading if no user
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <p className="text-gray-600">Redirecting to login...</p>
         </div>
       </div>
     );

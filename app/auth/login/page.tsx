@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import Link from "next/link";
 import { GraduationCap } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -20,23 +21,25 @@ export default function LoginPage() {
     setError("");
 
     try {
-      // TODO: Replace with actual Supabase login when database is configured
-      // const { data, error } = await supabase.auth.signInWithPassword({
-      //   email,
-      //   password,
-      // });
+      if (!supabase) {
+        throw new Error("Supabase not configured. Please check your environment variables.");
+      }
 
-      // For now, simulate successful login
-      console.log("Login attempt:", { email, password: "***" });
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Redirect to dashboard on success
-      alert("Login successful! Redirecting to dashboard...");
-      router.push("/dashboard");
-    } catch (err) {
-      setError("Invalid email or password. Please try again.");
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (data.user) {
+        console.log("Login successful:", data.user.email);
+        router.push("/dashboard");
+      }
+    } catch (err: any) {
+      setError(err.message || "Invalid email or password. Please try again.");
       console.error("Login error:", err);
     } finally {
       setLoading(false);

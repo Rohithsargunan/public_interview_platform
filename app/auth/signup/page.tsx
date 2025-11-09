@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import Link from "next/link";
 import { GraduationCap } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -38,28 +39,46 @@ export default function SignupPage() {
     }
 
     try {
-      // TODO: Replace with actual Supabase signup when database is configured
-      // const { data, error } = await supabase.auth.signUp({
-      //   email: formData.email,
-      //   password: formData.password,
-      //   options: {
-      //     data: {
-      //       full_name: formData.name,
-      //     }
-      //   }
-      // });
+      if (!supabase) {
+        throw new Error("Supabase not configured. Please check your environment variables.");
+      }
 
-      // For now, simulate successful signup
-      console.log("Signup data:", { ...formData, password: "***" });
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Redirect to dashboard on success
-      alert("Account created successfully! Redirecting to login...");
-      router.push("/auth/login");
-    } catch (err) {
-      setError("An error occurred. Please try again.");
+      const { data, error } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+        options: {
+          data: {
+            full_name: formData.name,
+          }
+        }
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (data.user) {
+        // Also create a user profile in our custom users table
+        const { error: profileError } = await supabase
+          .from('users')
+          .insert([
+            {
+              id: data.user.id,
+              email: formData.email,
+              full_name: formData.name,
+            }
+          ]);
+
+        if (profileError) {
+          console.error("Profile creation error:", profileError);
+          // Don't fail signup if profile creation fails
+        }
+
+        alert("Account created successfully! Please check your email for verification.");
+        router.push("/auth/login");
+      }
+    } catch (err: any) {
+      setError(err.message || "An error occurred. Please try again.");
       console.error("Signup error:", err);
     } finally {
       setLoading(false);
